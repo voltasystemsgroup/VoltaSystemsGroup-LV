@@ -1,0 +1,153 @@
+/***********************************************************************************
+  SIMPL+ Module Information
+  (Fill in comments below)
+***********************************************************************************/
+/*
+Dealer Name:	Crestron Electronics
+System Name:
+System Number:
+Programmer:		PAC
+Comments:
+*/
+
+/***********************************************************************************
+  Compiler Directives
+  (Uncomment and declare compiler directives as needed)
+***********************************************************************************/
+#SYMBOL_NAME "ELK M1 Zone Status Processor"
+// #HINT ""
+#DEFINE_CONSTANT	ciNUMZONES		208
+
+#DEFINE_CONSTANT	csALLZONES		"D6ZS"
+#DEFINE_CONSTANT	csONEZONE			"0AZC"
+#DEFINE_CONSTANT	csCRLF				"\x0D\x0A"
+
+// #CATEGORY "" 
+#CATEGORY "21" // Security
+#DEFAULT_VOLATILE
+// #DEFAULT_NONVOLATILE
+#ENABLE_STACK_CHECKING
+
+#HELP_BEGIN
+	This module is for use inside the ELK M1 Zone Feedback module only.
+#HELP_END
+/***********************************************************************************
+  DIGITAL, ANALOG and SERIAL INPUTS and OUTPUTS
+  (Uncomment and declare inputs and outputs as needed)
+***********************************************************************************/
+BUFFER_INPUT	From_Device$[500];
+
+ANALOG_OUTPUT	Zone_Status[ciNUMZONES];
+/***********************************************************************************
+  Global Variables
+  (Uncomment and declare global variables as needed)
+  Note:  Be sure to initialize all declared STRING variables as needed
+         For example, in Function Main: myString = "";
+***********************************************************************************/
+INTEGER	iZoneStatus[ciNUMZONES], iFlag1;
+STRING	sTemp[500];
+/***********************************************************************************
+  Functions
+  (Add any additional functions here)
+  Note:  Functions must be physically placed before the location in
+         the code that calls them.
+***********************************************************************************/
+/***********************************************************************************
+	Function fProcessAllZones
+		This function will process the data coming in if it has the data for all 208
+	zones. This is usually only sent in response to a status request sent by us.
+	This would normally only be sent at start up. The data will be converted to an
+	analog value.
+***********************************************************************************/
+Function fProcessAllZones()
+{
+	INTEGER	fiA, fiTemp;
+	
+	for(fiA = 1 to ciNUMZONES)
+	{
+		fiTemp = byte(sTemp, fiA + 4);
+		if((fiTemp >= 0x30) && (fiTemp <= 0x39))
+		{
+			fiTemp = fiTemp - 0x30;
+		}
+		else if((fiTemp >= 0x41) && (fiTemp <= 0x46))
+		{
+			fiTemp = fiTemp - 0x37;
+		}
+		else if((fiTemp >= 0x61) && (fiTemp <= 0x66))
+		{
+			fiTemp = fiTemp - 0x57;
+		}
+		if(iZoneStatus[fiA] <> fiTemp)
+		{
+			iZoneStatus[fiA] = fiTemp;
+			Zone_Status[fiA] = iZoneStatus[fiA];
+		}
+	}
+}
+/***********************************************************************************
+	Function fProcessOneZone
+		This function will process the data coming in if it has the data for only one
+	zone. This would be sent unsolicited by the ELK when the state of a zone changes.
+	The data will be converted to an analog value. The ELK must be programmed to
+	transmit zone changes. This is done using their software. It is located under
+	the Globals on the G29-G42(Special) tab.
+***********************************************************************************/
+Function fProcessOneZone()
+{
+	INTEGER fiTempValue, fiTempZone;
+	
+	fiTempZone = atoi(mid(sTemp, find(csONEZONE, sTemp) + 4, 3));
+	fiTempValue = byte(mid(sTemp, find(csONEZONE, sTemp) + 7, 1), 1);
+	if((fiTempValue >= 0x30) && (fiTempValue <= 0x39))
+	{
+		fiTempValue = fiTempValue - 0x30;
+	}
+	else if((fiTempValue >= 0x41) && (fiTempValue <= 0x46))
+	{
+		fiTempValue = fiTempValue - 0x37;
+	}
+	else if((fiTempValue >= 0x61) && (fiTempValue <= 0x66))
+	{
+		fiTempValue = fiTempValue - 0x57;
+	}
+	if(iZoneStatus[fiTempZone] <> fiTempValue)
+	{
+		iZoneStatus[fiTempZone] = fiTempValue;
+		Zone_Status[fiTempZone] = iZoneStatus[fiTempZone];
+	}
+}
+/***********************************************************************************
+  Event Handlers
+  (Uncomment and declare additional event handlers as needed)
+***********************************************************************************/
+CHANGE From_Device$
+{
+	if(iFlag1 = 0)
+	{
+		iFlag1 = 1;
+		while(find(csCRLF, From_Device$) > 0)
+		{
+			sTemp = remove(csCRLF, From_Device$);
+			if(find(csALLZONES, sTemp) > 0)
+			{
+				call fProcessAllZones();
+			}
+			else if(find(csONEZONE, sTemp) > 0)
+			{
+				call fProcessOneZone();
+			}
+			sTemp = "";
+		}
+		iFlag1 = 0;
+	}
+}
+/***********************************************************************************
+  Main()
+  Uncomment and place one-time startup code here
+  (This code will get called when the system starts up)
+***********************************************************************************/
+Function Main()
+{
+	iFlag1 = 0;
+}

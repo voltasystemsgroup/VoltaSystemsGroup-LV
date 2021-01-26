@@ -1,0 +1,168 @@
+/***********************************************************************************
+  SIMPL+ Module Information
+  (Fill in comments below)
+***********************************************************************************/
+/*
+Dealer Name:	Crestron Electronics
+System Name:
+System Number:
+Programmer:		PAC
+Comments:
+*/
+
+/***********************************************************************************
+  Compiler Directives
+  (Uncomment and declare compiler directives as needed)
+***********************************************************************************/
+#SYMBOL_NAME "ELK M1 Bypass Processor"
+// #HINT ""
+#DEFINE_CONSTANT	ciPASSCODEMAX			6
+#DEFINE_CONSTANT	ciPASSCODEMIN			4
+#DEFINE_CONSTANT	ciBYPASSED				13
+
+// #CATEGORY "" 
+#CATEGORY "21" // Security
+#DEFAULT_VOLATILE
+// #DEFAULT_NONVOLATILE
+#ENABLE_STACK_CHECKING
+
+#HELP_BEGIN
+	For use inside the ELK Zone Control module only.
+#HELP_END
+/***********************************************************************************
+  DIGITAL, ANALOG and SERIAL INPUTS and OUTPUTS
+  (Uncomment and declare inputs and outputs as needed)
+***********************************************************************************/
+DIGITAL_INPUT Bypass, Unbypass, Toggle;
+ANALOG_INPUT	Zone, Zone_Status;
+STRING_INPUT	Passcode$[6];
+
+STRING_OUTPUT	To_Device$;
+/***********************************************************************************
+  Global Variables
+  (Uncomment and declare global variables as needed)
+  Note:  Be sure to initialize all declared STRING variables as needed
+         For example, in Function Main: myString = "";
+***********************************************************************************/
+INTEGER	iZoneStatus, iFlag1, iZone;
+STRING	sPasscode[ciPASSCODEMAX];
+/***********************************************************************************
+  Functions
+  (Add any additional functions here)
+  Note:  Functions must be physically placed before the location in
+         the code that calls them.
+***********************************************************************************/
+/***********************************************************************************
+  sfProces
+  	This function will calculate the check sum, append it to the end of the command
+  and send it.
+***********************************************************************************/
+String_Function sfProcess(INTEGER fiZone)
+{
+	INTEGER fiA, fiCheckSum;
+	STRING	fsCheckSum[4], fsTemp[20], fsReturn[20];
+	fiCheckSum = 0;
+	if(len(sPasscode) = ciPASSCODEMIN)
+	{
+		sPasscode = "00" + sPasscode;
+	}
+	makestring(fsTemp, "10zb%03d1%s00", fiZone, sPasscode);
+	for(fiA = 1 to len(fsTemp))
+	{
+		fiCheckSum = fiCheckSum + byte(fsTemp, fiA);
+	}
+	fiCheckSum = 256 - (fiCheckSum mod 256);//2's complement
+	makestring(fsReturn, "%s%02X\x0D\x0A", fsTemp, fiCheckSum);
+	return(fsReturn);
+}
+/***********************************************************************************
+  Event Handlers
+  (Uncomment and declare additional event handlers as needed)
+***********************************************************************************/
+/***********************************************************************************
+	Push Bypass
+		The bypass command is a single toggle command. This event handler will only send
+	out the bypass command if the zone is unbypassed.
+***********************************************************************************/
+PUSH Bypass
+{
+	if(iFlag1 = 0)
+	{
+		iFlag1 = 1;
+		if(iZoneStatus < ciBYPASSED)
+		{
+			if((len(sPasscode) = ciPASSCODEMAX) || (len(sPasscode) = ciPASSCODEMIN))
+			{
+				To_Device$ = sfProcess(iZone);
+			}
+		}
+		iFlag1 = 0;
+	}
+}
+/***********************************************************************************
+	Push Unbypass
+		The bypass command is a single toggle command. This event handler will only send
+	out the bypass command if the zone is bypassed.
+***********************************************************************************/
+PUSH Unbypass
+{
+	if(iFlag1 = 0)
+	{
+		iFlag1 = 1;
+		if(iZoneStatus >= ciBYPASSED)
+		{
+			if((len(sPasscode) = ciPASSCODEMAX) || (len(sPasscode) = ciPASSCODEMIN))
+			{
+				To_Device$ = sfProcess(iZone);
+			}
+		}
+		iFlag1 = 0;
+	}
+}
+/***********************************************************************************
+	Push Toggle
+		The bypass command is a single toggle command. This event handler will send out
+	the bypass command every time it is pulsed.
+***********************************************************************************/
+PUSH Toggle
+{
+	if(iFlag1 = 0)
+	{
+		iFlag1 = 1;
+		if((len(sPasscode) = ciPASSCODEMAX) || (len(sPasscode) = ciPASSCODEMIN))
+		{
+			To_Device$ = sfProcess(iZone);
+		}
+		iFlag1 = 0;
+	}
+}
+
+CHANGE Passcode$
+{
+	sPasscode = Passcode$;
+}
+
+CHANGE Zone
+{
+	if((Zone > 0) && (Zone < 209))
+	{
+		iZone = Zone;
+	}
+}
+
+CHANGE Zone_Status
+{
+	if(Zone_Status < 16)
+	{
+		iZoneStatus = Zone_Status;
+	}
+}
+/***********************************************************************************
+  Main()
+  Uncomment and place one-time startup code here
+  (This code will get called when the system starts up)
+***********************************************************************************/
+Function Main()
+{
+	iFlag1 = 0;
+}
